@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Immersive HLS Player</title>
-    <!-- Load HLS.js from CDN -->
+    <title>HLS Direct Player</title>
+    <!-- Load HLS.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
-        /* Reset and Base Styles */
+        /* Base Reset */
         body, html {
             margin: 0;
             padding: 0;
@@ -15,10 +15,10 @@
             height: 100%;
             background-color: #000;
             font-family: sans-serif;
-            overflow: hidden; /* Stop scrolling */
+            overflow: hidden;
         }
 
-        /* The Setup Menu (Visible initially) */
+        /* 1. SETUP SCREEN (Input Box) */
         #setup-container {
             display: flex;
             flex-direction: column;
@@ -26,47 +26,48 @@
             align-items: center;
             height: 100%;
             width: 100%;
-            z-index: 10;
-            position: relative;
-            background: #1a1a1a;
+            background: #121212;
             color: white;
+            z-index: 10;
+            position: absolute;
         }
 
         .input-box {
-            background: #333;
+            background: #1e1e1e;
             padding: 2rem;
-            border-radius: 10px;
+            border-radius: 12px;
             text-align: center;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
             width: 90%;
-            max-width: 500px;
+            max-width: 600px;
         }
 
         input {
-            width: 70%;
+            width: 80%;
             padding: 12px;
-            margin-bottom: 15px;
-            border: 1px solid #555;
-            background: #222;
-            color: white;
-            border-radius: 4px;
+            margin-bottom: 20px;
+            border: 1px solid #444;
+            background: #000;
+            color: #fff;
+            border-radius: 6px;
+            outline: none;
         }
 
         button.play-btn {
-            padding: 12px 25px;
+            padding: 12px 30px;
             background-color: #007bff;
             color: white;
             border: none;
             cursor: pointer;
-            border-radius: 4px;
+            border-radius: 6px;
             font-size: 16px;
+            font-weight: bold;
         }
-
         button.play-btn:hover { background-color: #0056b3; }
 
-        /* The Video Player (Hidden initially) */
+        /* 2. PLAYER SCREEN (Full width) */
         #player-container {
-            display: none; /* Hidden by default */
+            display: none;
             position: absolute;
             top: 0;
             left: 0;
@@ -78,53 +79,52 @@
         video {
             width: 100%;
             height: 100%;
-            object-fit: contain; /* Keeps aspect ratio, adds black bars if needed */
+            object-fit: contain;
         }
 
-        /* The 'Back' button overlay */
+        /* Close Button (Hidden until hover) */
         #close-btn {
             position: absolute;
             top: 20px;
             right: 20px;
-            background: rgba(0, 0, 0, 0.5);
+            background: rgba(0, 0, 0, 0.6);
             color: white;
-            border: 1px solid white;
+            border: 1px solid rgba(255,255,255,0.3);
             border-radius: 50%;
             width: 40px;
             height: 40px;
             cursor: pointer;
             z-index: 30;
-            font-weight: bold;
+            font-size: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            opacity: 0; /* Hidden unless hovered */
+            opacity: 0;
             transition: opacity 0.3s;
         }
 
-        /* Show back button when hovering anywhere on the player */
-        #player-container:hover #close-btn {
-            opacity: 1;
-        }
+        #player-container:hover #close-btn { opacity: 1; }
 
     </style>
 </head>
 <body>
 
-    <!-- 1. The Input Menu -->
+    <!-- Setup Screen -->
     <div id="setup-container">
         <div class="input-box">
-            <h2>HLS Player</h2>
-            <input type="text" id="streamUrl" placeholder="Paste .m3u8 link..." value="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8">
+            <h2>HLS Stream Player</h2>
+            <p style="color:#888; margin-bottom: 15px; font-size: 14px;">
+                Tip: Add <code>?LINK_HERE</code> to the end of your address bar to auto-play.
+            </p>
+            <input type="text" id="streamUrl" placeholder="Paste .m3u8 link here...">
             <br>
-            <button class="play-btn" onclick="startPlayer()">Play Fullscreen</button>
-            <p id="status" style="color:#aaa; font-size:12px; margin-top:10px;"></p>
+            <button class="play-btn" onclick="manualStart()">Play Stream</button>
         </div>
     </div>
 
-    <!-- 2. The Fullscreen Player -->
+    <!-- Player Screen -->
     <div id="player-container">
-        <div id="close-btn" onclick="stopPlayer()" title="Close Player">✕</div>
+        <div id="close-btn" onclick="stopPlayer()">✕</div>
         <video id="video" controls autoplay></video>
     </div>
 
@@ -133,40 +133,48 @@
         var input = document.getElementById('streamUrl');
         var setupDiv = document.getElementById('setup-container');
         var playerDiv = document.getElementById('player-container');
-        var statusMsg = document.getElementById('status');
         var hls = null;
 
-        function startPlayer() {
-            var source = input.value.trim();
-            if (!source) {
-                alert("Please paste a link first");
-                return;
+        // 1. Check URL on Load
+        window.addEventListener('load', function() {
+            // Get everything after the '?' in the URL
+            var urlParams = window.location.search.substring(1);
+            
+            if (urlParams) {
+                // Determine if the URL was encoded or raw
+                var cleanUrl = urlParams;
+                try {
+                    // Try decoding (in case browser encoded special chars)
+                    cleanUrl = decodeURIComponent(urlParams);
+                } catch (e) {
+                    cleanUrl = urlParams;
+                }
+                
+                input.value = cleanUrl;
+                playStream(cleanUrl);
             }
+        });
 
-            // UI Switch: Hide menu, show player
+        // 2. Button Click Handler
+        function manualStart() {
+            var url = input.value.trim();
+            if(url) playStream(url);
+        }
+
+        // 3. Core Player Logic
+        function playStream(source) {
             setupDiv.style.display = 'none';
             playerDiv.style.display = 'block';
 
             if (Hls.isSupported()) {
                 if (hls) hls.destroy();
-                
                 hls = new Hls();
                 hls.loadSource(source);
                 hls.attachMedia(video);
                 hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                    video.play();
+                    video.play().catch(e => console.log("Autoplay prevented"));
                 });
-                
-                // If error, go back to menu
-                hls.on(Hls.Events.ERROR, function (event, data) {
-                    if (data.fatal) {
-                        console.error("Error:", data);
-                        // Optional: stopPlayer(); alert("Stream failed");
-                    }
-                });
-
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                // Safari Native
                 video.src = source;
                 video.addEventListener('loadedmetadata', function() {
                     video.play();
@@ -174,18 +182,20 @@
             }
         }
 
+        // 4. Stop / Close Logic
         function stopPlayer() {
-            // Stop video
             video.pause();
             video.src = "";
             if (hls) {
                 hls.destroy();
                 hls = null;
             }
-
-            // UI Switch: Hide player, show menu
             playerDiv.style.display = 'none';
             setupDiv.style.display = 'flex';
+            
+            // Clear the URL bar so the user can enter a new one without reloading immediately
+            history.pushState("", document.title, window.location.pathname);
+            input.value = "";
         }
     </script>
 </body>
