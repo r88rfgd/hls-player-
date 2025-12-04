@@ -18,9 +18,9 @@
             overflow: hidden;
         }
 
-        /* 1. SETUP SCREEN (Control Panel) */
+        /* 1. SETUP SCREEN (Input) */
         #setup-container {
-            display: flex; /* Flex is toggled via JS */
+            display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -30,13 +30,6 @@
             color: white;
             z-index: 50;
             position: absolute;
-            transition: transform 0.3s ease-in-out;
-        }
-
-        /* Minimized state for Control Panel (hidden at bottom) */
-        #setup-container.minimized {
-            transform: translateY(100%);
-            display: none; 
         }
 
         .input-box {
@@ -49,17 +42,6 @@
             max-width: 550px;
             border: 1px solid #333;
         }
-
-        h2 { margin-top: 0; color: #fff; }
-        
-        .status-text {
-            color: #aaa;
-            margin-bottom: 20px;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
-        .highlight { color: #007bff; font-weight: bold; }
 
         input {
             width: 100%;
@@ -74,27 +56,23 @@
             font-size: 16px;
         }
 
-        input:focus { border-color: #007bff; }
-
         .broadcast-btn {
             width: 100%;
             padding: 15px;
-            background-color: #e50914; /* Netflix Red */
+            background-color: #e50914;
             color: white;
             border: none;
             cursor: pointer;
             border-radius: 8px;
             font-size: 18px;
             font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
             transition: background 0.2s;
         }
         .broadcast-btn:hover { background-color: #b20710; }
 
         /* 2. PLAYER SCREEN */
         #player-container {
-            display: block; /* Always exists behind setup */
+            display: none;
             position: absolute;
             top: 0;
             left: 0;
@@ -110,93 +88,91 @@
             background: black;
         }
 
-        /* UI Overlay on Video */
-        .video-ui {
+        /* 3. THE "WATCH NOW" POPUP (Permission Request) */
+        #join-overlay {
+            display: none; /* Hidden by default */
             position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 30;
-            display: flex;
-            gap: 10px;
-            pointer-events: none; /* Let clicks pass through */
-        }
-
-        .badge {
-            background: rgba(255, 0, 0, 0.7);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
             color: white;
-            padding: 5px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-            animation: pulse 2s infinite;
         }
 
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.6; }
-            100% { opacity: 1; }
-        }
-
-        /* Button to bring back control panel */
-        #show-controls-btn {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            z-index: 60;
-            background: rgba(0,0,0,0.5);
+        .join-btn {
+            padding: 20px 40px;
+            background: #007bff;
             color: white;
-            border: 1px solid #555;
-            padding: 10px 20px;
-            border-radius: 30px;
+            font-size: 24px;
+            border: none;
+            border-radius: 50px;
             cursor: pointer;
-            font-size: 14px;
+            margin-top: 20px;
+            box-shadow: 0 0 20px rgba(0, 123, 255, 0.5);
+            transition: transform 0.2s;
+        }
+        .join-btn:hover { transform: scale(1.05); }
+
+        /* 4. CLOSE BUTTON (The Kill Switch) */
+        #kill-switch {
+            position: absolute;
+            top: 25px;
+            right: 25px;
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 200;
+            display: none; /* Flex when playing */
+            align-items: center;
+            justify-content: center;
             transition: background 0.2s;
         }
-        #show-controls-btn:hover { background: rgba(0,0,0,0.8); }
+        #kill-switch:hover { background: #e50914; border-color: #e50914; }
 
     </style>
 </head>
 <body>
 
-    <!-- 1. SETUP / CONTROLS SCREEN -->
+    <!-- 1. SETUP -->
     <div id="setup-container">
         <div class="input-box">
-            <h2>🌍 Global Cinema Control</h2>
-            <p class="status-text">
-                There is <b>ONE</b> room. Changing the video here changes it for <span class="highlight">everyone on the site</span> immediately.
-            </p>
-            
-            <input type="text" id="streamUrl" placeholder="Paste .m3u8 URL here...">
-            <button class="broadcast-btn" id="broadcastBtn">📡 Broadcast to World</button>
-            <br><br>
-            <p style="font-size: 12px; color: #666;">
-                If a video is already playing, just minimize this box.
-            </p>
-            <button onclick="toggleSetup(false)" style="background:none; border:none; color:#888; cursor:pointer; text-decoration:underline;">
-                Close Controls (Watch Current Stream)
-            </button>
+            <h2 style="margin-top:0; color:#fff;">🎬 Global Cinema</h2>
+            <p style="color:#aaa; margin-bottom:20px;">Paste a link. It plays for everyone.</p>
+            <input type="text" id="streamUrl" placeholder="https://example.com/video.m3u8">
+            <button class="broadcast-btn" id="broadcastBtn">Start Broadcast</button>
         </div>
     </div>
 
-    <!-- 2. PLAYER SCREEN -->
+    <!-- 2. PLAYER -->
     <div id="player-container">
-        <div class="video-ui">
-            <div class="badge">● LIVE Global Sync</div>
-        </div>
         <video id="video" controls playsinline></video>
     </div>
 
-    <!-- Button to reopen controls -->
-    <button id="show-controls-btn" onclick="toggleSetup(true)">⚙️ Change Video</button>
+    <!-- 3. CLOSE BUTTON (Global Stop) -->
+    <div id="kill-switch" title="Stop for Everyone">✕</div>
+
+    <!-- 4. JOIN OVERLAY -->
+    <div id="join-overlay">
+        <h1>A Stream is Active</h1>
+        <button class="join-btn" id="joinBtn">▶ Watch Now</button>
+    </div>
 
     <!-- Firebase Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // --- CONFIGURATION ---
+        // --- FIREBASE CONFIG ---
         const firebaseConfig = {
             apiKey: "AIzaSyBQLfLCZ4D_PMgPfsdZokbD9cEFdwEI9zc",
             authDomain: "codecompass-efffc.firebaseapp.com",
@@ -209,92 +185,110 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        
-        // Single Global Reference
-        const GLOBAL_REF_PATH = 'global_stream'; 
-        const globalRef = ref(db, GLOBAL_REF_PATH);
+        const globalRef = ref(db, 'global_stream');
 
         // --- VARIABLES ---
         let hls = null;
-        let isRemoteUpdate = false; // Flag to prevent feedback loops
+        let isRemoteUpdate = false;
         let currentLoadedUrl = "";
 
+        // UI Elements
+        const setupDiv = document.getElementById('setup-container');
+        const playerDiv = document.getElementById('player-container');
+        const joinOverlay = document.getElementById('join-overlay');
         const video = document.getElementById('video');
         const input = document.getElementById('streamUrl');
-        const setupDiv = document.getElementById('setup-container');
         const broadcastBtn = document.getElementById('broadcastBtn');
+        const joinBtn = document.getElementById('joinBtn');
+        const killSwitch = document.getElementById('kill-switch');
 
-        // --- GLOBAL FUNCTIONS (Exposed to HTML) ---
-        window.toggleSetup = function(show) {
-            setupDiv.style.display = show ? 'flex' : 'none';
-        }
-
-        // --- 1. LISTENER (Receiver) ---
-        // This runs whenever ANYONE updates the database
+        // --- 1. FIREBASE LISTENER (The Brain) ---
         onValue(globalRef, (snapshot) => {
             const data = snapshot.val();
             
-            if (!data) {
-                // No stream is active yet
-                toggleSetup(true);
+            // CASE 1: No Data or Empty URL -> Show Setup, Close Player
+            if (!data || !data.url) {
+                stopLocalPlayer();
                 return;
             }
 
-            // A. Check if URL changed
-            if (data.url && data.url !== currentLoadedUrl) {
-                console.log("New Stream detected:", data.url);
+            // CASE 2: New URL Detected
+            if (data.url !== currentLoadedUrl) {
                 currentLoadedUrl = data.url;
-                input.value = data.url; // Update input box for visibility
-                loadStream(data.url);
                 
-                // Hide setup screen automatically if we are receiving a valid stream
-                toggleSetup(false);
+                // Show "Join" popup so user can click to enable audio/video
+                setupDiv.style.display = 'none';
+                playerDiv.style.display = 'block';
+                joinOverlay.style.display = 'flex'; 
+                
+                // We DON'T start playing yet. We wait for "Watch Now" click.
+                return; 
             }
 
-            // B. Sync Playback State (Time & Pause/Play)
-            // We set the flag true so our own event listeners don't fire updates back to DB
-            isRemoteUpdate = true;
+            // CASE 3: Sync Logic (Only runs if user has clicked Join)
+            if (joinOverlay.style.display === 'none') {
+                isRemoteUpdate = true;
 
-            // Sync Play/Pause
-            if (data.isPlaying && video.paused) {
-                video.play().catch(e => console.log("Autoplay blocked, user interaction needed"));
-            } else if (!data.isPlaying && !video.paused) {
-                video.pause();
+                // Sync Play/Pause
+                if (data.isPlaying && video.paused) {
+                    video.play().catch(e => console.log("Waiting for user interaction"));
+                } else if (!data.isPlaying && !video.paused) {
+                    video.pause();
+                }
+
+                // Sync Time (if drift > 1.5s)
+                if (Math.abs(video.currentTime - data.timestamp) > 1.5) {
+                    video.currentTime = data.timestamp;
+                }
+                
+                setTimeout(() => { isRemoteUpdate = false; }, 100);
             }
-
-            // Sync Time (if drift is significant > 1.5s)
-            const drift = Math.abs(video.currentTime - data.timestamp);
-            if (drift > 1.5) {
-                // console.log("Syncing drift:", drift);
-                video.currentTime = data.timestamp;
-            }
-
-            // Reset flag after a short delay
-            setTimeout(() => { isRemoteUpdate = false; }, 100);
         });
 
-        // --- 2. BROADCASTER (Sender) ---
-        // Updates the database when YOU click broadcast
+        // --- 2. BROADCAST (Start Stream) ---
         broadcastBtn.addEventListener('click', () => {
             const url = input.value.trim();
-            if (!url) return alert("Please enter a URL");
+            if (!url) return alert("Enter a URL");
 
-            // Overwrite global state
+            // Set global state
             set(globalRef, {
                 url: url,
                 isPlaying: true,
                 timestamp: 0,
                 lastUpdated: Date.now()
             });
-            
-            toggleSetup(false);
+
+            // The user who started it doesn't need the "Watch Now" popup
+            // Manually trigger the join logic for the host
+            currentLoadedUrl = url;
+            setupDiv.style.display = 'none';
+            playerDiv.style.display = 'block';
+            killSwitch.style.display = 'flex';
+            joinOverlay.style.display = 'none';
+            initHls(url);
         });
 
-        // --- 3. VIDEO EVENT LISTENERS (Sync Controls) ---
-        // Updates the database when YOU pause/play/seek
-        const updateGlobalState = () => {
-            if (isRemoteUpdate) return; // Don't update if the change came from Firebase
+        // --- 3. JOIN BUTTON (New User Arrives) ---
+        joinBtn.addEventListener('click', () => {
+            joinOverlay.style.display = 'none'; // Hide popup
+            killSwitch.style.display = 'flex'; // Show Close button
+            initHls(currentLoadedUrl); // Start Video
+        });
 
+        // --- 4. KILL SWITCH (Close for Everyone) ---
+        killSwitch.addEventListener('click', () => {
+            if(confirm("Stop this stream for everyone?")) {
+                set(globalRef, {
+                    url: "", // Empty URL signals stop
+                    isPlaying: false,
+                    timestamp: 0
+                });
+            }
+        });
+
+        // --- 5. SYNC EVENTS ---
+        const updateState = () => {
+            if (isRemoteUpdate || joinOverlay.style.display !== 'none') return;
             update(globalRef, {
                 isPlaying: !video.paused,
                 timestamp: video.currentTime,
@@ -302,31 +296,41 @@
             });
         };
 
-        video.addEventListener('play', updateGlobalState);
-        video.addEventListener('pause', updateGlobalState);
-        video.addEventListener('seeked', updateGlobalState);
+        video.addEventListener('play', updateState);
+        video.addEventListener('pause', updateState);
+        video.addEventListener('seeked', updateState);
 
-        // --- 4. HLS PLAYER LOGIC ---
-        function loadStream(source) {
+        // --- 6. PLAYER FUNCTIONS ---
+        function initHls(source) {
             if (Hls.isSupported()) {
                 if (hls) hls.destroy();
                 hls = new Hls();
                 hls.loadSource(source);
                 hls.attachMedia(video);
                 hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                    // Try to play immediately
-                    video.play().catch(() => {
-                        // If browser blocks audio autoplay, mute and try again
-                        video.muted = true;
-                        video.play();
-                    });
+                    video.play();
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = source;
-                video.addEventListener('loadedmetadata', function() {
-                    video.play();
-                });
+                video.play();
             }
+        }
+
+        function stopLocalPlayer() {
+            video.pause();
+            video.src = "";
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            currentLoadedUrl = "";
+            input.value = "";
+            
+            // Reset UI
+            playerDiv.style.display = 'none';
+            killSwitch.style.display = 'none';
+            joinOverlay.style.display = 'none';
+            setupDiv.style.display = 'flex';
         }
     </script>
 </body>
