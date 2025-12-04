@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HLS Watch Party</title>
+    <title>Global HLS Cinema</title>
     <!-- Load HLS.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
@@ -14,13 +14,13 @@
             width: 100%;
             height: 100%;
             background-color: #000;
-            font-family: sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             overflow: hidden;
         }
 
-        /* 1. SETUP SCREEN */
+        /* 1. SETUP SCREEN (Control Panel) */
         #setup-container {
-            display: flex;
+            display: flex; /* Flex is toggled via JS */
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -28,165 +28,175 @@
             width: 100%;
             background: #121212;
             color: white;
-            z-index: 10;
+            z-index: 50;
             position: absolute;
+            transition: transform 0.3s ease-in-out;
+        }
+
+        /* Minimized state for Control Panel (hidden at bottom) */
+        #setup-container.minimized {
+            transform: translateY(100%);
+            display: none; 
         }
 
         .input-box {
             background: #1e1e1e;
-            padding: 2rem;
-            border-radius: 12px;
+            padding: 2.5rem;
+            border-radius: 16px;
             text-align: center;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.8);
             width: 90%;
-            max-width: 600px;
+            max-width: 550px;
+            border: 1px solid #333;
         }
+
+        h2 { margin-top: 0; color: #fff; }
+        
+        .status-text {
+            color: #aaa;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .highlight { color: #007bff; font-weight: bold; }
 
         input {
-            width: 80%;
-            padding: 12px;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 15px;
             margin-bottom: 20px;
             border: 1px solid #444;
-            background: #000;
+            background: #0d0d0d;
             color: #fff;
-            border-radius: 6px;
+            border-radius: 8px;
             outline: none;
+            font-size: 16px;
         }
 
-        .btn-group {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-        }
+        input:focus { border-color: #007bff; }
 
-        button {
-            padding: 12px 20px;
+        .broadcast-btn {
+            width: 100%;
+            padding: 15px;
+            background-color: #e50914; /* Netflix Red */
+            color: white;
             border: none;
             cursor: pointer;
-            border-radius: 6px;
-            font-size: 16px;
+            border-radius: 8px;
+            font-size: 18px;
             font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             transition: background 0.2s;
         }
-
-        .play-btn { background-color: #444; color: white; }
-        .play-btn:hover { background-color: #666; }
-
-        .party-btn { background-color: #007bff; color: white; }
-        .party-btn:hover { background-color: #0056b3; }
+        .broadcast-btn:hover { background-color: #b20710; }
 
         /* 2. PLAYER SCREEN */
         #player-container {
-            display: none;
+            display: block; /* Always exists behind setup */
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            z-index: 20;
+            z-index: 10;
         }
 
         video {
             width: 100%;
             height: 100%;
             object-fit: contain;
+            background: black;
         }
 
-        /* Overlay UI inside player */
-        .overlay-ui {
+        /* UI Overlay on Video */
+        .video-ui {
             position: absolute;
             top: 20px;
             left: 20px;
             z-index: 30;
             display: flex;
             gap: 10px;
-            opacity: 0;
-            transition: opacity 0.3s;
+            pointer-events: none; /* Let clicks pass through */
         }
-        
-        #player-container:hover .overlay-ui { opacity: 1; }
 
-        .status-badge {
-            background: rgba(0, 0, 0, 0.6);
-            color: #00ff88;
-            padding: 8px 15px;
-            border-radius: 20px;
-            border: 1px solid rgba(0, 255, 136, 0.3);
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-        }
-        
-        .room-info {
-            background: rgba(0, 0, 0, 0.6);
+        .badge {
+            background: rgba(255, 0, 0, 0.7);
             color: white;
-            padding: 8px 15px;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            cursor: pointer;
-            font-size: 14px;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            animation: pulse 2s infinite;
         }
 
-        #close-btn {
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        /* Button to bring back control panel */
+        #show-controls-btn {
             position: absolute;
-            top: 20px;
+            bottom: 20px;
             right: 20px;
-            background: rgba(0, 0, 0, 0.6);
+            z-index: 60;
+            background: rgba(0,0,0,0.5);
             color: white;
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            border: 1px solid #555;
+            padding: 10px 20px;
+            border-radius: 30px;
             cursor: pointer;
-            z-index: 30;
-            font-size: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.3s;
+            font-size: 14px;
+            transition: background 0.2s;
         }
-
-        #player-container:hover #close-btn { opacity: 1; }
+        #show-controls-btn:hover { background: rgba(0,0,0,0.8); }
 
     </style>
 </head>
 <body>
 
-    <!-- Setup Screen -->
+    <!-- 1. SETUP / CONTROLS SCREEN -->
     <div id="setup-container">
         <div class="input-box">
-            <h2>HLS Player</h2>
-            <p style="color:#888; margin-bottom: 15px; font-size: 14px;">
-                Paste a .m3u8 link. Use "Watch Together" to sync with friends.
+            <h2>🌍 Global Cinema Control</h2>
+            <p class="status-text">
+                There is <b>ONE</b> room. Changing the video here changes it for <span class="highlight">everyone on the site</span> immediately.
             </p>
-            <input type="text" id="streamUrl" placeholder="https://example.com/video.m3u8">
-            <br>
-            <div class="btn-group">
-                <button class="play-btn" id="localPlayBtn">Play Solo</button>
-                <button class="party-btn" id="createPartyBtn">🎥 Watch Together</button>
-            </div>
+            
+            <input type="text" id="streamUrl" placeholder="Paste .m3u8 URL here...">
+            <button class="broadcast-btn" id="broadcastBtn">📡 Broadcast to World</button>
+            <br><br>
+            <p style="font-size: 12px; color: #666;">
+                If a video is already playing, just minimize this box.
+            </p>
+            <button onclick="toggleSetup(false)" style="background:none; border:none; color:#888; cursor:pointer; text-decoration:underline;">
+                Close Controls (Watch Current Stream)
+            </button>
         </div>
     </div>
 
-    <!-- Player Screen -->
+    <!-- 2. PLAYER SCREEN -->
     <div id="player-container">
-        <div class="overlay-ui">
-            <div id="syncStatus" class="status-badge" style="display:none;">● Live Sync</div>
-            <div id="copyLinkBtn" class="room-info" style="display:none;" onclick="copyRoomLink()">🔗 Copy Room Link</div>
+        <div class="video-ui">
+            <div class="badge">● LIVE Global Sync</div>
         </div>
-
-        <div id="close-btn" onclick="stopPlayer()">✕</div>
-        <video id="video" controls autoplay></video>
+        <video id="video" controls playsinline></video>
     </div>
 
-    <!-- Firebase Logic Type Module -->
-    <script type="module">
-        // 1. Import Firebase
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    <!-- Button to reopen controls -->
+    <button id="show-controls-btn" onclick="toggleSetup(true)">⚙️ Change Video</button>
 
-        // 2. Configuration
+    <!-- Firebase Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // --- CONFIGURATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyBQLfLCZ4D_PMgPfsdZokbD9cEFdwEI9zc",
             authDomain: "codecompass-efffc.firebaseapp.com",
@@ -199,91 +209,117 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        
+        // Single Global Reference
+        const GLOBAL_REF_PATH = 'global_stream'; 
+        const globalRef = ref(db, GLOBAL_REF_PATH);
 
-        // 3. Variables
+        // --- VARIABLES ---
         let hls = null;
-        let activeRoomId = null;
-        let isRemoteUpdate = false; // Prevents loops (DB update -> Video Event -> DB update)
+        let isRemoteUpdate = false; // Flag to prevent feedback loops
+        let currentLoadedUrl = "";
 
         const video = document.getElementById('video');
         const input = document.getElementById('streamUrl');
         const setupDiv = document.getElementById('setup-container');
-        const playerDiv = document.getElementById('player-container');
-        const localBtn = document.getElementById('localPlayBtn');
-        const partyBtn = document.getElementById('createPartyBtn');
-        const statusBadge = document.getElementById('syncStatus');
-        const copyLinkBtn = document.getElementById('copyLinkBtn');
+        const broadcastBtn = document.getElementById('broadcastBtn');
 
-        // 4. Initialization Logic
-        window.addEventListener('load', async () => {
-            const params = new URLSearchParams(window.location.search);
-            const roomParam = params.get('room');
-            const linkParam = params.get('LINK_HERE'); // Legacy support
+        // --- GLOBAL FUNCTIONS (Exposed to HTML) ---
+        window.toggleSetup = function(show) {
+            setupDiv.style.display = show ? 'flex' : 'none';
+        }
 
-            if (roomParam) {
-                // We are joining a room
-                activeRoomId = roomParam;
-                statusBadge.style.display = 'flex';
-                copyLinkBtn.style.display = 'block';
-                input.value = "Joining Room...";
-                
-                // Get URL from DB
-                const roomRef = ref(db, 'rooms/' + activeRoomId);
-                const snapshot = await get(roomRef);
-                
-                if (snapshot.exists()) {
-                    const data = snapshot.val();
-                    startHls(data.url);
-                    initSyncListeners(activeRoomId);
-                } else {
-                    alert("Room not found or expired.");
-                    window.history.pushState({}, document.title, window.location.pathname);
-                    setupDiv.style.display = 'flex';
-                }
-            } else if (linkParam) {
-                input.value = linkParam;
-                startHls(linkParam);
-            }
-        });
-
-        // 5. Button Actions
-        localBtn.addEventListener('click', () => {
-            const url = input.value.trim();
-            if(url) startHls(url);
-        });
-
-        partyBtn.addEventListener('click', () => {
-            const url = input.value.trim();
-            if(!url) return alert("Please enter a valid URL first.");
-
-            // Generate Random Room ID
-            const newRoomId = Math.random().toString(36).substring(2, 8);
+        // --- 1. LISTENER (Receiver) ---
+        // This runs whenever ANYONE updates the database
+        onValue(globalRef, (snapshot) => {
+            const data = snapshot.val();
             
-            // Save initial state to Firebase
-            set(ref(db, 'rooms/' + newRoomId), {
+            if (!data) {
+                // No stream is active yet
+                toggleSetup(true);
+                return;
+            }
+
+            // A. Check if URL changed
+            if (data.url && data.url !== currentLoadedUrl) {
+                console.log("New Stream detected:", data.url);
+                currentLoadedUrl = data.url;
+                input.value = data.url; // Update input box for visibility
+                loadStream(data.url);
+                
+                // Hide setup screen automatically if we are receiving a valid stream
+                toggleSetup(false);
+            }
+
+            // B. Sync Playback State (Time & Pause/Play)
+            // We set the flag true so our own event listeners don't fire updates back to DB
+            isRemoteUpdate = true;
+
+            // Sync Play/Pause
+            if (data.isPlaying && video.paused) {
+                video.play().catch(e => console.log("Autoplay blocked, user interaction needed"));
+            } else if (!data.isPlaying && !video.paused) {
+                video.pause();
+            }
+
+            // Sync Time (if drift is significant > 1.5s)
+            const drift = Math.abs(video.currentTime - data.timestamp);
+            if (drift > 1.5) {
+                // console.log("Syncing drift:", drift);
+                video.currentTime = data.timestamp;
+            }
+
+            // Reset flag after a short delay
+            setTimeout(() => { isRemoteUpdate = false; }, 100);
+        });
+
+        // --- 2. BROADCASTER (Sender) ---
+        // Updates the database when YOU click broadcast
+        broadcastBtn.addEventListener('click', () => {
+            const url = input.value.trim();
+            if (!url) return alert("Please enter a URL");
+
+            // Overwrite global state
+            set(globalRef, {
                 url: url,
                 isPlaying: true,
                 timestamp: 0,
                 lastUpdated: Date.now()
-            }).then(() => {
-                // Reload page with ?room=ID
-                const newUrl = window.location.pathname + '?room=' + newRoomId;
-                window.location.href = newUrl;
             });
+            
+            toggleSetup(false);
         });
 
-        // 6. HLS Player Logic
-        function startHls(source) {
-            setupDiv.style.display = 'none';
-            playerDiv.style.display = 'block';
+        // --- 3. VIDEO EVENT LISTENERS (Sync Controls) ---
+        // Updates the database when YOU pause/play/seek
+        const updateGlobalState = () => {
+            if (isRemoteUpdate) return; // Don't update if the change came from Firebase
 
+            update(globalRef, {
+                isPlaying: !video.paused,
+                timestamp: video.currentTime,
+                lastUpdated: Date.now()
+            });
+        };
+
+        video.addEventListener('play', updateGlobalState);
+        video.addEventListener('pause', updateGlobalState);
+        video.addEventListener('seeked', updateGlobalState);
+
+        // --- 4. HLS PLAYER LOGIC ---
+        function loadStream(source) {
             if (Hls.isSupported()) {
                 if (hls) hls.destroy();
                 hls = new Hls();
                 hls.loadSource(source);
                 hls.attachMedia(video);
                 hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                    video.play().catch(e => console.log("Autoplay blocked"));
+                    // Try to play immediately
+                    video.play().catch(() => {
+                        // If browser blocks audio autoplay, mute and try again
+                        video.muted = true;
+                        video.play();
+                    });
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = source;
@@ -292,79 +328,6 @@
                 });
             }
         }
-
-        // 7. Synchronization Logic (The "Watch Together" Magic)
-        function initSyncListeners(roomId) {
-            const roomRef = ref(db, 'rooms/' + roomId);
-
-            // A. LISTEN to Firebase changes
-            onValue(roomRef, (snapshot) => {
-                const data = snapshot.val();
-                if (!data) return;
-
-                // Prevent triggering our own events
-                isRemoteUpdate = true;
-
-                // 1. Sync Play/Pause
-                if (data.isPlaying && video.paused) {
-                    video.play().catch(()=>{});
-                } else if (!data.isPlaying && !video.paused) {
-                    video.pause();
-                }
-
-                // 2. Sync Time (Only if drift is > 1.5 seconds)
-                const timeDiff = Math.abs(video.currentTime - data.timestamp);
-                if (timeDiff > 1.5) {
-                    console.log(`Syncing time: Local ${video.currentTime} -> Remote ${data.timestamp}`);
-                    video.currentTime = data.timestamp;
-                }
-
-                setTimeout(() => { isRemoteUpdate = false; }, 50);
-            });
-
-            // B. SEND local events to Firebase
-            // Helper to update DB
-            const updateDb = (playing) => {
-                if (isRemoteUpdate) return; // Don't loop
-                update(roomRef, {
-                    isPlaying: playing,
-                    timestamp: video.currentTime,
-                    lastUpdated: Date.now()
-                });
-            };
-
-            video.addEventListener('play', () => updateDb(true));
-            video.addEventListener('pause', () => updateDb(false));
-            video.addEventListener('seeked', () => updateDb(video.paused ? false : true));
-        }
-
-        // 8. Global Window Functions (for inline HTML onclicks)
-        window.stopPlayer = function() {
-            video.pause();
-            video.src = "";
-            if (hls) {
-                hls.destroy();
-                hls = null;
-            }
-            // Reset UI
-            playerDiv.style.display = 'none';
-            setupDiv.style.display = 'flex';
-            statusBadge.style.display = 'none';
-            copyLinkBtn.style.display = 'none';
-            
-            // Clear Room URL
-            history.pushState("", document.title, window.location.pathname);
-            input.value = "";
-            activeRoomId = null;
-        };
-
-        window.copyRoomLink = function() {
-            navigator.clipboard.writeText(window.location.href).then(() => {
-                const originalText = copyLinkBtn.innerText;
-                copyLinkBtn.innerText = "✅ Copied!";
-                setTimeout(() => copyLinkBtn.innerText = originalText, 2000);
-            });
-        };
     </script>
 </body>
 </html>
