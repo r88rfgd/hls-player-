@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HLS Direct Player</title>
+    <title>HLS Watch Party</title>
     <!-- Load HLS.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
@@ -18,7 +18,7 @@
             overflow: hidden;
         }
 
-        /* 1. SETUP SCREEN (Input Box) */
+        /* 1. SETUP SCREEN */
         #setup-container {
             display: flex;
             flex-direction: column;
@@ -53,19 +53,29 @@
             outline: none;
         }
 
-        button.play-btn {
-            padding: 12px 30px;
-            background-color: #007bff;
-            color: white;
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 20px;
             border: none;
             cursor: pointer;
             border-radius: 6px;
             font-size: 16px;
             font-weight: bold;
+            transition: background 0.2s;
         }
-        button.play-btn:hover { background-color: #0056b3; }
 
-        /* 2. PLAYER SCREEN (Full width) */
+        .play-btn { background-color: #444; color: white; }
+        .play-btn:hover { background-color: #666; }
+
+        .party-btn { background-color: #007bff; color: white; }
+        .party-btn:hover { background-color: #0056b3; }
+
+        /* 2. PLAYER SCREEN */
         #player-container {
             display: none;
             position: absolute;
@@ -82,7 +92,41 @@
             object-fit: contain;
         }
 
-        /* Close Button (Hidden until hover) */
+        /* Overlay UI inside player */
+        .overlay-ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 30;
+            display: flex;
+            gap: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        #player-container:hover .overlay-ui { opacity: 1; }
+
+        .status-badge {
+            background: rgba(0, 0, 0, 0.6);
+            color: #00ff88;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .room-info {
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            font-size: 14px;
+        }
+
         #close-btn {
             position: absolute;
             top: 20px;
@@ -112,57 +156,124 @@
     <!-- Setup Screen -->
     <div id="setup-container">
         <div class="input-box">
-            <h2>HLS Stream Player</h2>
+            <h2>HLS Player</h2>
             <p style="color:#888; margin-bottom: 15px; font-size: 14px;">
-                Tip: Add <code>?LINK_HERE</code> to the end of your address bar to auto-play.
+                Paste a .m3u8 link. Use "Watch Together" to sync with friends.
             </p>
-            <input type="text" id="streamUrl" placeholder="Paste .m3u8 link here...">
+            <input type="text" id="streamUrl" placeholder="https://example.com/video.m3u8">
             <br>
-            <button class="play-btn" onclick="manualStart()">Play Stream</button>
+            <div class="btn-group">
+                <button class="play-btn" id="localPlayBtn">Play Solo</button>
+                <button class="party-btn" id="createPartyBtn">🎥 Watch Together</button>
+            </div>
         </div>
     </div>
 
     <!-- Player Screen -->
     <div id="player-container">
+        <div class="overlay-ui">
+            <div id="syncStatus" class="status-badge" style="display:none;">● Live Sync</div>
+            <div id="copyLinkBtn" class="room-info" style="display:none;" onclick="copyRoomLink()">🔗 Copy Room Link</div>
+        </div>
+
         <div id="close-btn" onclick="stopPlayer()">✕</div>
         <video id="video" controls autoplay></video>
     </div>
 
-    <script>
-        var video = document.getElementById('video');
-        var input = document.getElementById('streamUrl');
-        var setupDiv = document.getElementById('setup-container');
-        var playerDiv = document.getElementById('player-container');
-        var hls = null;
+    <!-- Firebase Logic Type Module -->
+    <script type="module">
+        // 1. Import Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue, update, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-        // 1. Check URL on Load
-        window.addEventListener('load', function() {
-            // Get everything after the '?' in the URL
-            var urlParams = window.location.search.substring(1);
-            
-            if (urlParams) {
-                // Determine if the URL was encoded or raw
-                var cleanUrl = urlParams;
-                try {
-                    // Try decoding (in case browser encoded special chars)
-                    cleanUrl = decodeURIComponent(urlParams);
-                } catch (e) {
-                    cleanUrl = urlParams;
-                }
+        // 2. Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBQLfLCZ4D_PMgPfsdZokbD9cEFdwEI9zc",
+            authDomain: "codecompass-efffc.firebaseapp.com",
+            databaseURL: "https://codecompass-efffc-default-rtdb.firebaseio.com",
+            projectId: "codecompass-efffc",
+            storageBucket: "codecompass-efffc.firebasestorage.app",
+            messagingSenderId: "1055960889677",
+            appId: "1:1055960889677:web:e2ffafcb2edf8270215f04"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // 3. Variables
+        let hls = null;
+        let activeRoomId = null;
+        let isRemoteUpdate = false; // Prevents loops (DB update -> Video Event -> DB update)
+
+        const video = document.getElementById('video');
+        const input = document.getElementById('streamUrl');
+        const setupDiv = document.getElementById('setup-container');
+        const playerDiv = document.getElementById('player-container');
+        const localBtn = document.getElementById('localPlayBtn');
+        const partyBtn = document.getElementById('createPartyBtn');
+        const statusBadge = document.getElementById('syncStatus');
+        const copyLinkBtn = document.getElementById('copyLinkBtn');
+
+        // 4. Initialization Logic
+        window.addEventListener('load', async () => {
+            const params = new URLSearchParams(window.location.search);
+            const roomParam = params.get('room');
+            const linkParam = params.get('LINK_HERE'); // Legacy support
+
+            if (roomParam) {
+                // We are joining a room
+                activeRoomId = roomParam;
+                statusBadge.style.display = 'flex';
+                copyLinkBtn.style.display = 'block';
+                input.value = "Joining Room...";
                 
-                input.value = cleanUrl;
-                playStream(cleanUrl);
+                // Get URL from DB
+                const roomRef = ref(db, 'rooms/' + activeRoomId);
+                const snapshot = await get(roomRef);
+                
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    startHls(data.url);
+                    initSyncListeners(activeRoomId);
+                } else {
+                    alert("Room not found or expired.");
+                    window.history.pushState({}, document.title, window.location.pathname);
+                    setupDiv.style.display = 'flex';
+                }
+            } else if (linkParam) {
+                input.value = linkParam;
+                startHls(linkParam);
             }
         });
 
-        // 2. Button Click Handler
-        function manualStart() {
-            var url = input.value.trim();
-            if(url) playStream(url);
-        }
+        // 5. Button Actions
+        localBtn.addEventListener('click', () => {
+            const url = input.value.trim();
+            if(url) startHls(url);
+        });
 
-        // 3. Core Player Logic
-        function playStream(source) {
+        partyBtn.addEventListener('click', () => {
+            const url = input.value.trim();
+            if(!url) return alert("Please enter a valid URL first.");
+
+            // Generate Random Room ID
+            const newRoomId = Math.random().toString(36).substring(2, 8);
+            
+            // Save initial state to Firebase
+            set(ref(db, 'rooms/' + newRoomId), {
+                url: url,
+                isPlaying: true,
+                timestamp: 0,
+                lastUpdated: Date.now()
+            }).then(() => {
+                // Reload page with ?room=ID
+                const newUrl = window.location.pathname + '?room=' + newRoomId;
+                window.location.href = newUrl;
+            });
+        });
+
+        // 6. HLS Player Logic
+        function startHls(source) {
             setupDiv.style.display = 'none';
             playerDiv.style.display = 'block';
 
@@ -172,7 +283,7 @@
                 hls.loadSource(source);
                 hls.attachMedia(video);
                 hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                    video.play().catch(e => console.log("Autoplay prevented"));
+                    video.play().catch(e => console.log("Autoplay blocked"));
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = source;
@@ -182,21 +293,78 @@
             }
         }
 
-        // 4. Stop / Close Logic
-        function stopPlayer() {
+        // 7. Synchronization Logic (The "Watch Together" Magic)
+        function initSyncListeners(roomId) {
+            const roomRef = ref(db, 'rooms/' + roomId);
+
+            // A. LISTEN to Firebase changes
+            onValue(roomRef, (snapshot) => {
+                const data = snapshot.val();
+                if (!data) return;
+
+                // Prevent triggering our own events
+                isRemoteUpdate = true;
+
+                // 1. Sync Play/Pause
+                if (data.isPlaying && video.paused) {
+                    video.play().catch(()=>{});
+                } else if (!data.isPlaying && !video.paused) {
+                    video.pause();
+                }
+
+                // 2. Sync Time (Only if drift is > 1.5 seconds)
+                const timeDiff = Math.abs(video.currentTime - data.timestamp);
+                if (timeDiff > 1.5) {
+                    console.log(`Syncing time: Local ${video.currentTime} -> Remote ${data.timestamp}`);
+                    video.currentTime = data.timestamp;
+                }
+
+                setTimeout(() => { isRemoteUpdate = false; }, 50);
+            });
+
+            // B. SEND local events to Firebase
+            // Helper to update DB
+            const updateDb = (playing) => {
+                if (isRemoteUpdate) return; // Don't loop
+                update(roomRef, {
+                    isPlaying: playing,
+                    timestamp: video.currentTime,
+                    lastUpdated: Date.now()
+                });
+            };
+
+            video.addEventListener('play', () => updateDb(true));
+            video.addEventListener('pause', () => updateDb(false));
+            video.addEventListener('seeked', () => updateDb(video.paused ? false : true));
+        }
+
+        // 8. Global Window Functions (for inline HTML onclicks)
+        window.stopPlayer = function() {
             video.pause();
             video.src = "";
             if (hls) {
                 hls.destroy();
                 hls = null;
             }
+            // Reset UI
             playerDiv.style.display = 'none';
             setupDiv.style.display = 'flex';
+            statusBadge.style.display = 'none';
+            copyLinkBtn.style.display = 'none';
             
-            // Clear the URL bar so the user can enter a new one without reloading immediately
+            // Clear Room URL
             history.pushState("", document.title, window.location.pathname);
             input.value = "";
-        }
+            activeRoomId = null;
+        };
+
+        window.copyRoomLink = function() {
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                const originalText = copyLinkBtn.innerText;
+                copyLinkBtn.innerText = "✅ Copied!";
+                setTimeout(() => copyLinkBtn.innerText = originalText, 2000);
+            });
+        };
     </script>
 </body>
 </html>
