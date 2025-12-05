@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global HLS Cinema - Live Sync</title>
+    <title>Global HLS Cinema - Shared URL Only</title>
     <!-- Load HLS.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
@@ -118,23 +118,7 @@
         }
         .join-btn:hover { transform: scale(1.05); }
 
-        /* 4. LIVE BADGE (Visual Indicator) */
-        #live-badge {
-            position: absolute;
-            top: 25px;
-            left: 25px;
-            background: #e50914;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-weight: bold;
-            font-size: 14px;
-            z-index: 200;
-            display: none;
-            pointer-events: none;
-        }
-
-        /* 5. CLOSE BUTTON */
+        /* 4. CLOSE BUTTON */
         #kill-switch {
             position: absolute;
             top: 25px;
@@ -162,17 +146,16 @@
     <!-- 1. SETUP -->
     <div id="setup-container">
         <div class="input-box">
-            <h2 style="margin-top:0; color:#fff;">🎬 Global Live Cinema</h2>
-            <p style="color:#aaa; margin-bottom:20px;">Paste a link. Syncs Play/Pause only.</p>
+            <h2 style="margin-top:0; color:#fff;">🎬 Global Shared Cinema</h2>
+            <p style="color:#aaa; margin-bottom:20px;">Paste a link. Everyone gets the video, but controls are local.</p>
             <input type="text" id="streamUrl" placeholder="https://example.com/video.m3u8">
-            <button class="broadcast-btn" id="broadcastBtn">Start Live Stream</button>
+            <button class="broadcast-btn" id="broadcastBtn">Set Global Stream</button>
         </div>
     </div>
 
     <!-- 2. PLAYER -->
     <div id="player-container">
         <video id="video" controls playsinline></video>
-        <div id="live-badge">● LIVE</div>
     </div>
 
     <!-- 3. CLOSE BUTTON -->
@@ -180,14 +163,14 @@
 
     <!-- 4. JOIN OVERLAY -->
     <div id="join-overlay">
-        <h1>Live Stream Active</h1>
-        <button class="join-btn" id="joinBtn">▶ Sync to Live</button>
+        <h1>New Stream Available</h1>
+        <button class="join-btn" id="joinBtn">▶ Watch</button>
     </div>
 
     <!-- Firebase Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         // --- FIREBASE CONFIG ---
         const firebaseConfig = {
@@ -206,7 +189,6 @@
 
         // --- VARIABLES ---
         let hls = null;
-        let isRemoteUpdate = false;
         let currentLoadedUrl = "";
 
         // UI Elements
@@ -218,44 +200,29 @@
         const broadcastBtn = document.getElementById('broadcastBtn');
         const joinBtn = document.getElementById('joinBtn');
         const killSwitch = document.getElementById('kill-switch');
-        const liveBadge = document.getElementById('live-badge');
 
         // --- 1. FIREBASE LISTENER (Read Only) ---
         onValue(globalRef, (snapshot) => {
             const data = snapshot.val();
             
-            // CASE 1: Stop Stream
+            // CASE 1: Stop Stream (if URL is empty or null)
             if (!data || !data.url) {
                 stopLocalPlayer();
                 return;
             }
 
-            // CASE 2: New URL (Setup)
+            // CASE 2: New URL detected
+            // We ONLY trigger if the URL changes. We do not check for pause/play.
             if (data.url !== currentLoadedUrl) {
                 currentLoadedUrl = data.url;
+                
+                // Switch UI to Player Mode
                 setupDiv.style.display = 'none';
                 playerDiv.style.display = 'block';
-                joinOverlay.style.display = 'flex'; // Ask permission to start
+                
+                // Show Overlay (Users must click to start due to browser policies)
+                joinOverlay.style.display = 'flex'; 
                 killSwitch.style.display = 'flex';
-                liveBadge.style.display = 'block';
-                return; 
-            }
-
-            // CASE 3: Sync Play/Pause (Only if already watching)
-            if (joinOverlay.style.display === 'none') {
-                isRemoteUpdate = true;
-
-                // Sync Play/Pause Status
-                if (data.isPlaying && video.paused) {
-                    // Force jump to LIVE whenever we resume
-                    jumpToLive(); 
-                    video.play().catch(e => console.log("Autoplay blocked:", e));
-                } else if (!data.isPlaying && !video.paused) {
-                    video.pause();
-                }
-
-                // Reset flag shortly
-                setTimeout(() => { isRemoteUpdate = false; }, 500);
             }
         });
 
@@ -264,19 +231,17 @@
             const url = input.value.trim();
             if (!url) return alert("Enter a URL");
 
-            // Init DB (No timestamp, just Play State)
+            // Just sending the URL. No play state, no timestamp.
             set(globalRef, {
-                url: url,
-                isPlaying: true, // Auto-play on start
-                lastUpdated: Date.now()
+                url: url
             });
 
+            // Local setup for the broadcaster
             currentLoadedUrl = url;
             setupDiv.style.display = 'none';
             playerDiv.style.display = 'block';
             killSwitch.style.display = 'flex';
             joinOverlay.style.display = 'none';
-            liveBadge.style.display = 'block';
             
             initHls(url);
         });
@@ -289,40 +254,19 @@
 
         // --- 4. KILL SWITCH ---
         killSwitch.addEventListener('click', () => {
-            if(confirm("Stop this stream for everyone?")) {
+            if(confirm("Close the video for everyone?")) {
                 set(globalRef, {
-                    url: "", 
-                    isPlaying: false
+                    url: "" 
                 });
             }
         });
 
-        // --- 5. SYNC EVENTS (Write) ---
-        const updateState = () => {
-            if (isRemoteUpdate || joinOverlay.style.display !== 'none') return;
-            
-            // We ONLY update play/pause. Timestamps are ignored.
-            update(globalRef, {
-                isPlaying: !video.paused,
-                lastUpdated: Date.now()
-            });
-        };
-
-        video.addEventListener('play', updateState);
-        video.addEventListener('pause', updateState);
-        // We removed 'seeked' and 'timeupdate' to prevent timestamp conflicts.
-
-        // --- 6. PLAYER FUNCTIONS ---
+        // --- 5. PLAYER FUNCTIONS ---
         function initHls(source) {
             if (Hls.isSupported()) {
                 if (hls) hls.destroy();
                 
-                // HLS Config: Aggressively target "Live Edge"
-                hls = new Hls({
-                    startPosition: -1, // Start at LIVE
-                    liveSyncDurationCount: 2, // Keep buffers small (closer to live)
-                });
-
+                hls = new Hls();
                 hls.loadSource(source);
                 hls.attachMedia(video);
                 hls.on(Hls.Events.MANIFEST_PARSED, function() {
@@ -332,15 +276,6 @@
                 // Safari Fallback
                 video.src = source;
                 video.play();
-            }
-        }
-
-        // Helper: Force video to the very end (Live)
-        function jumpToLive() {
-            if (hls && hls.liveSyncPosition) {
-                video.currentTime = hls.liveSyncPosition;
-            } else if (video.seekable.length > 0) {
-                video.currentTime = video.seekable.end(0) - 1; // 1s safety buffer
             }
         }
 
@@ -357,7 +292,6 @@
             playerDiv.style.display = 'none';
             killSwitch.style.display = 'none';
             joinOverlay.style.display = 'none';
-            liveBadge.style.display = 'none';
             setupDiv.style.display = 'flex';
         }
     </script>
