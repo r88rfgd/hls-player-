@@ -191,6 +191,9 @@
         let hls = null;
         let isRemoteUpdate = false;
         let currentLoadedUrl = "";
+        
+        // FIX: Flag to prevent new users from dragging everyone back to 0:00
+        let canSendUpdates = false; 
 
         // UI Elements
         const setupDiv = document.getElementById('setup-container');
@@ -216,12 +219,13 @@
             if (data.url !== currentLoadedUrl) {
                 currentLoadedUrl = data.url;
                 
+                // Block this user from sending updates (prevent drag-back)
+                canSendUpdates = false;
+
                 // Show "Join" popup so user can click to enable audio/video
                 setupDiv.style.display = 'none';
                 playerDiv.style.display = 'block';
                 joinOverlay.style.display = 'flex'; 
-                
-                // We DON'T start playing yet. We wait for "Watch Now" click.
                 return; 
             }
 
@@ -236,12 +240,16 @@
                     video.pause();
                 }
 
-                // Sync Time (if drift > 1.5s)
-                if (Math.abs(video.currentTime - data.timestamp) > 1.5) {
+                // Sync Time (if drift > 2s)
+                if (Math.abs(video.currentTime - data.timestamp) > 2.0) {
                     video.currentTime = data.timestamp;
                 }
                 
-                setTimeout(() => { isRemoteUpdate = false; }, 100);
+                // Allow this user to update Firebase only AFTER they are synced
+                setTimeout(() => { 
+                    isRemoteUpdate = false; 
+                    canSendUpdates = true; 
+                }, 1000); // 1-second buffer before becoming a source of truth
             }
         });
 
@@ -249,6 +257,9 @@
         broadcastBtn.addEventListener('click', () => {
             const url = input.value.trim();
             if (!url) return alert("Enter a URL");
+
+            // Host is allowed to set the time immediately
+            canSendUpdates = true;
 
             // Set global state
             set(globalRef, {
@@ -258,8 +269,6 @@
                 lastUpdated: Date.now()
             });
 
-            // The user who started it doesn't need the "Watch Now" popup
-            // Manually trigger the join logic for the host
             currentLoadedUrl = url;
             setupDiv.style.display = 'none';
             playerDiv.style.display = 'block';
@@ -270,16 +279,16 @@
 
         // --- 3. JOIN BUTTON (New User Arrives) ---
         joinBtn.addEventListener('click', () => {
-            joinOverlay.style.display = 'none'; // Hide popup
-            killSwitch.style.display = 'flex'; // Show Close button
-            initHls(currentLoadedUrl); // Start Video
+            joinOverlay.style.display = 'none'; 
+            killSwitch.style.display = 'flex'; 
+            initHls(currentLoadedUrl); 
         });
 
         // --- 4. KILL SWITCH (Close for Everyone) ---
         killSwitch.addEventListener('click', () => {
             if(confirm("Stop this stream for everyone?")) {
                 set(globalRef, {
-                    url: "", // Empty URL signals stop
+                    url: "", 
                     isPlaying: false,
                     timestamp: 0
                 });
@@ -288,7 +297,9 @@
 
         // --- 5. SYNC EVENTS ---
         const updateState = () => {
-            if (isRemoteUpdate || joinOverlay.style.display !== 'none') return;
+            // STOP if it's a remote update OR if we haven't synced yet
+            if (isRemoteUpdate || joinOverlay.style.display !== 'none' || !canSendUpdates) return;
+
             update(globalRef, {
                 isPlaying: !video.paused,
                 timestamp: video.currentTime,
@@ -299,12 +310,23 @@
         video.addEventListener('play', updateState);
         video.addEventListener('pause', updateState);
         video.addEventListener('seeked', updateState);
+        video.addEventListener('timeupdate', () => {
+            // Optional: Throttle updates to avoid Firebase flooding
+            // Only update on timeupdate if you are the host or main sync source
+            // For now, we rely on seeked/play/pause for major events
+        });
 
         // --- 6. PLAYER FUNCTIONS ---
         function initHls(source) {
             if (Hls.isSupported()) {
                 if (hls) hls.destroy();
-                hls = new Hls();
+                
+                // FIX: Config to start at "Live Edge" (-1) instead of buffer start
+                hls = new Hls({
+                    startPosition: -1, 
+                    liveSyncDurationCount: 3, // Keep sync close to live edge
+                });
+
                 hls.loadSource(source);
                 hls.attachMedia(video);
                 hls.on(Hls.Events.MANIFEST_PARSED, function() {
@@ -325,8 +347,8 @@
             }
             currentLoadedUrl = "";
             input.value = "";
+            canSendUpdates = false;
             
-            // Reset UI
             playerDiv.style.display = 'none';
             killSwitch.style.display = 'none';
             joinOverlay.style.display = 'none';
