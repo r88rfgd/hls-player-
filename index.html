@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global HLS Cinema</title>
+    <title>Global HLS Cinema - Live Sync</title>
     <!-- Load HLS.js -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
@@ -88,9 +88,9 @@
             background: black;
         }
 
-        /* 3. THE "WATCH NOW" POPUP (Permission Request) */
+        /* 3. THE "WATCH NOW" POPUP */
         #join-overlay {
-            display: none; /* Hidden by default */
+            display: none; 
             position: absolute;
             top: 0;
             left: 0;
@@ -118,7 +118,23 @@
         }
         .join-btn:hover { transform: scale(1.05); }
 
-        /* 4. CLOSE BUTTON (The Kill Switch) */
+        /* 4. LIVE BADGE (Visual Indicator) */
+        #live-badge {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            background: #e50914;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 14px;
+            z-index: 200;
+            display: none;
+            pointer-events: none;
+        }
+
+        /* 5. CLOSE BUTTON */
         #kill-switch {
             position: absolute;
             top: 25px;
@@ -132,7 +148,7 @@
             font-size: 24px;
             cursor: pointer;
             z-index: 200;
-            display: none; /* Flex when playing */
+            display: none; 
             align-items: center;
             justify-content: center;
             transition: background 0.2s;
@@ -146,25 +162,26 @@
     <!-- 1. SETUP -->
     <div id="setup-container">
         <div class="input-box">
-            <h2 style="margin-top:0; color:#fff;">🎬 Global Cinema</h2>
-            <p style="color:#aaa; margin-bottom:20px;">Paste a link. It plays for everyone.</p>
+            <h2 style="margin-top:0; color:#fff;">🎬 Global Live Cinema</h2>
+            <p style="color:#aaa; margin-bottom:20px;">Paste a link. Syncs Play/Pause only.</p>
             <input type="text" id="streamUrl" placeholder="https://example.com/video.m3u8">
-            <button class="broadcast-btn" id="broadcastBtn">Start Broadcast</button>
+            <button class="broadcast-btn" id="broadcastBtn">Start Live Stream</button>
         </div>
     </div>
 
     <!-- 2. PLAYER -->
     <div id="player-container">
         <video id="video" controls playsinline></video>
+        <div id="live-badge">● LIVE</div>
     </div>
 
-    <!-- 3. CLOSE BUTTON (Global Stop) -->
+    <!-- 3. CLOSE BUTTON -->
     <div id="kill-switch" title="Stop for Everyone">✕</div>
 
     <!-- 4. JOIN OVERLAY -->
     <div id="join-overlay">
-        <h1>A Stream is Active</h1>
-        <button class="join-btn" id="joinBtn">▶ Watch Now</button>
+        <h1>Live Stream Active</h1>
+        <button class="join-btn" id="joinBtn">▶ Sync to Live</button>
     </div>
 
     <!-- Firebase Logic -->
@@ -191,9 +208,6 @@
         let hls = null;
         let isRemoteUpdate = false;
         let currentLoadedUrl = "";
-        
-        // FIX: Flag to prevent new users from dragging everyone back to 0:00
-        let canSendUpdates = false; 
 
         // UI Elements
         const setupDiv = document.getElementById('setup-container');
@@ -204,68 +218,56 @@
         const broadcastBtn = document.getElementById('broadcastBtn');
         const joinBtn = document.getElementById('joinBtn');
         const killSwitch = document.getElementById('kill-switch');
+        const liveBadge = document.getElementById('live-badge');
 
-        // --- 1. FIREBASE LISTENER (The Brain) ---
+        // --- 1. FIREBASE LISTENER (Read Only) ---
         onValue(globalRef, (snapshot) => {
             const data = snapshot.val();
             
-            // CASE 1: No Data or Empty URL -> Show Setup, Close Player
+            // CASE 1: Stop Stream
             if (!data || !data.url) {
                 stopLocalPlayer();
                 return;
             }
 
-            // CASE 2: New URL Detected
+            // CASE 2: New URL (Setup)
             if (data.url !== currentLoadedUrl) {
                 currentLoadedUrl = data.url;
-                
-                // Block this user from sending updates (prevent drag-back)
-                canSendUpdates = false;
-
-                // Show "Join" popup so user can click to enable audio/video
                 setupDiv.style.display = 'none';
                 playerDiv.style.display = 'block';
-                joinOverlay.style.display = 'flex'; 
+                joinOverlay.style.display = 'flex'; // Ask permission to start
+                killSwitch.style.display = 'flex';
+                liveBadge.style.display = 'block';
                 return; 
             }
 
-            // CASE 3: Sync Logic (Only runs if user has clicked Join)
+            // CASE 3: Sync Play/Pause (Only if already watching)
             if (joinOverlay.style.display === 'none') {
                 isRemoteUpdate = true;
 
-                // Sync Play/Pause
+                // Sync Play/Pause Status
                 if (data.isPlaying && video.paused) {
-                    video.play().catch(e => console.log("Waiting for user interaction"));
+                    // Force jump to LIVE whenever we resume
+                    jumpToLive(); 
+                    video.play().catch(e => console.log("Autoplay blocked:", e));
                 } else if (!data.isPlaying && !video.paused) {
                     video.pause();
                 }
 
-                // Sync Time (if drift > 2s)
-                if (Math.abs(video.currentTime - data.timestamp) > 2.0) {
-                    video.currentTime = data.timestamp;
-                }
-                
-                // Allow this user to update Firebase only AFTER they are synced
-                setTimeout(() => { 
-                    isRemoteUpdate = false; 
-                    canSendUpdates = true; 
-                }, 1000); // 1-second buffer before becoming a source of truth
+                // Reset flag shortly
+                setTimeout(() => { isRemoteUpdate = false; }, 500);
             }
         });
 
-        // --- 2. BROADCAST (Start Stream) ---
+        // --- 2. BROADCAST (Write) ---
         broadcastBtn.addEventListener('click', () => {
             const url = input.value.trim();
             if (!url) return alert("Enter a URL");
 
-            // Host is allowed to set the time immediately
-            canSendUpdates = true;
-
-            // Set global state
+            // Init DB (No timestamp, just Play State)
             set(globalRef, {
                 url: url,
-                isPlaying: true,
-                timestamp: 0,
+                isPlaying: true, // Auto-play on start
                 lastUpdated: Date.now()
             });
 
@@ -274,57 +276,51 @@
             playerDiv.style.display = 'block';
             killSwitch.style.display = 'flex';
             joinOverlay.style.display = 'none';
+            liveBadge.style.display = 'block';
+            
             initHls(url);
         });
 
-        // --- 3. JOIN BUTTON (New User Arrives) ---
+        // --- 3. JOIN BUTTON ---
         joinBtn.addEventListener('click', () => {
-            joinOverlay.style.display = 'none'; 
-            killSwitch.style.display = 'flex'; 
-            initHls(currentLoadedUrl); 
+            joinOverlay.style.display = 'none';
+            initHls(currentLoadedUrl);
         });
 
-        // --- 4. KILL SWITCH (Close for Everyone) ---
+        // --- 4. KILL SWITCH ---
         killSwitch.addEventListener('click', () => {
             if(confirm("Stop this stream for everyone?")) {
                 set(globalRef, {
                     url: "", 
-                    isPlaying: false,
-                    timestamp: 0
+                    isPlaying: false
                 });
             }
         });
 
-        // --- 5. SYNC EVENTS ---
+        // --- 5. SYNC EVENTS (Write) ---
         const updateState = () => {
-            // STOP if it's a remote update OR if we haven't synced yet
-            if (isRemoteUpdate || joinOverlay.style.display !== 'none' || !canSendUpdates) return;
-
+            if (isRemoteUpdate || joinOverlay.style.display !== 'none') return;
+            
+            // We ONLY update play/pause. Timestamps are ignored.
             update(globalRef, {
                 isPlaying: !video.paused,
-                timestamp: video.currentTime,
                 lastUpdated: Date.now()
             });
         };
 
         video.addEventListener('play', updateState);
         video.addEventListener('pause', updateState);
-        video.addEventListener('seeked', updateState);
-        video.addEventListener('timeupdate', () => {
-            // Optional: Throttle updates to avoid Firebase flooding
-            // Only update on timeupdate if you are the host or main sync source
-            // For now, we rely on seeked/play/pause for major events
-        });
+        // We removed 'seeked' and 'timeupdate' to prevent timestamp conflicts.
 
         // --- 6. PLAYER FUNCTIONS ---
         function initHls(source) {
             if (Hls.isSupported()) {
                 if (hls) hls.destroy();
                 
-                // FIX: Config to start at "Live Edge" (-1) instead of buffer start
+                // HLS Config: Aggressively target "Live Edge"
                 hls = new Hls({
-                    startPosition: -1, 
-                    liveSyncDurationCount: 3, // Keep sync close to live edge
+                    startPosition: -1, // Start at LIVE
+                    liveSyncDurationCount: 2, // Keep buffers small (closer to live)
                 });
 
                 hls.loadSource(source);
@@ -333,8 +329,18 @@
                     video.play();
                 });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Safari Fallback
                 video.src = source;
                 video.play();
+            }
+        }
+
+        // Helper: Force video to the very end (Live)
+        function jumpToLive() {
+            if (hls && hls.liveSyncPosition) {
+                video.currentTime = hls.liveSyncPosition;
+            } else if (video.seekable.length > 0) {
+                video.currentTime = video.seekable.end(0) - 1; // 1s safety buffer
             }
         }
 
@@ -347,11 +353,11 @@
             }
             currentLoadedUrl = "";
             input.value = "";
-            canSendUpdates = false;
             
             playerDiv.style.display = 'none';
             killSwitch.style.display = 'none';
             joinOverlay.style.display = 'none';
+            liveBadge.style.display = 'none';
             setupDiv.style.display = 'flex';
         }
     </script>
